@@ -1,0 +1,13 @@
+$schema: https://azuremlschemas.azureedge.net/latest/commandJob.schema.json
+component: ../components/model_train.yml
+
+inputs:
+  train_data: azureml://datastores/workspaceblobstore/paths/data/processed/train/
+  test_data: azureml://datastores/workspaceblobstore/paths/data/processed/test/
+  criterion: squared_error
+  max_depth: 5
+
+outputs:
+  model_output: azureml://datastores/workspaceblobstore/paths/outputs/model/
+
+compute: azureml:cpu-cluster

@@ -1,0 +1,15 @@
+$schema: https://azuremlschemas.azureedge.net/latest/commandComponent.schema.json
+name: model_register_component
+display_name: Register Model
+type: command
+
+inputs:
+  model:
+    type: uri_folder
+
+code: ./scripts
+command: >-
+  python model_register.py 
+  --model ${{inputs.model}}
+
+environment: azureml:AzureML-sklearn-1.0-ubuntu20.04-py38-cpu@latest

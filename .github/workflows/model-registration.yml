@@ -1,0 +1,39 @@
+name: Model Registration on AzureML
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  azureml_model_registration:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v2
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: Install Azure CLI and AzureML extension
+      run: |
+        python -m pip install --upgrade pip
+        pip install azure-cli azure-ai-ml
+        az extension add -n ml -y
+
+    - name: Azure Login
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: Submit Azure ML Job
+      run: |
+        az ml job create --file scripts/model_register_job.yml \
+          --workspace-name "${{ secrets.AZUREML_WORKSPACE_NAME }}" \
+          --resource-group "${{ secrets.AZURE_RESOURCE_GROUP }}" \
+          --subscription "${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
+          --only-show-errors --stream

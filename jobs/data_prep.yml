@@ -1,0 +1,10 @@
+$schema: https://azuremlschemas.azureedge.net/latest/commandJob.schema.json
+component: ../components/data_prep.yml
+
+inputs:
+  raw_data: azureml://datastores/workspaceblobstore/paths/data/raw/
+
+outputs:
+  processed_data: azureml://datastores/workspaceblobstore/paths/data/processed/
+
+compute: azureml:cpu-cluster

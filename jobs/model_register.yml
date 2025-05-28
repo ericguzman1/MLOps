@@ -1,0 +1,8 @@
+$schema: https://azuremlschemas.azureedge.net/latest/commandJob.schema.json
+component: ../components/model_register.yml
+
+inputs:
+  model_path: azureml://datastores/workspaceblobstore/paths/outputs/model/
+  model_name: decision-tree-model
+
+compute: azureml:cpu-cluster
