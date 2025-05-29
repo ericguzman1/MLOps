@@ -32,7 +32,7 @@ jobs:
     - name: Submit Azure ML Job
       run: |
         az extension add -n ml -y
-        az ml job create --file scripts/azureml-job.yml \
+        az ml job create --file scripts/MLOps.yml \
           --resource-group "${{ secrets.AZURE_RESOURCE_GROUP }}" \
           --workspace-name "${{ secrets.AZUREML_WORKSPACE_NAME }}" \
           --only-show-errors --stream
