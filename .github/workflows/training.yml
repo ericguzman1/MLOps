@@ -22,6 +22,8 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
+        # It's highly recommended to put these in a requirements.txt file
+        # and then use 'pip install -r requirements.txt'
         pip install azure-ai-ml mlflow pandas scikit-learn azureml-core
 
     - name: Log in to Azure
@@ -29,10 +31,14 @@ jobs:
       with:
         creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-    - name: Submit Azure ML Job
+    - name: Run AzureML Pipeline Script # Changed step name for clarity
+      env:
+        # Pass environment variables needed by your MLOps.py script
+        AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
+        AZUREML_WORKSPACE_NAME: ${{ secrets.AZUREML_WORKSPACE_NAME }}
+        # If auto_ai is always the workspace/resource group, you might consider
+        # making them secrets or parameters in your MLOps.py if they vary.
       run: |
-        az extension add -n ml -y
-        az ml job create --file .azureml/job.yml \
-          --workspace-name auto_ai \
-          --resource-group auto_ai \
-          --only-show-errors --stream
+        az extension add -n ml -y # Ensure the Azure ML CLI extension is installed
+        python scripts/MLOps.py # Execute your Python script to submit the pipeline
