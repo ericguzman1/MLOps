@@ -17,9 +17,9 @@ ml_client = MLClient(
 # Define the base directory
 base_dir = os.path.dirname(os.path.abspath(__file__))
 
-step_process = load_component(source=os.path.join(base_dir, "../components/step_process.yml"))
+step_process = load_component(source=os.path.join(base_dir, "../components/data_prep.yml"))
 train_step = load_component(source=os.path.join(base_dir, "../components/train_step.yml"))
-model_register_component = load_component(source=os.path.join(base_dir, "../components/model_register_component.yml"))
+model_register_component = load_component(source=os.path.join(base_dir, "../components/model_register.yml"))
 
 # Define pipeline
 @pipeline(compute="cpu-cluster", description="Pipeline for data preparation, training, and model registration")
