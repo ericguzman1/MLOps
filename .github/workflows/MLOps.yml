@@ -1,40 +1,43 @@
-name: AzureML Pipeline Submission
+name: AzureML Pipeline Submission # Name of this specific workflow
 
 on:
   push:
     branches:
       - main
-  workflow_dispatch:
+  workflow_dispatch: # Allows manual triggering from GitHub UI
 
 jobs:
-  submit_pipeline:
-    runs-on: ubuntu-latest
+  submit_pipeline: # Name of the job
+    runs-on: ubuntu-latest # Specifies the runner environment
 
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v3
+      uses: actions/checkout@v3 # Using version 3 for improved security and features
 
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v4 # Using version 4 for Python setup
       with:
-        python-version: '3.10'
+        python-version: '3.10' # Specifies the Python version to use
 
-    - name: Install dependencies
+    - name: Install dependencies and Azure ML CLI Extension # Combined and clarified step
       run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
+        python -m pip install --upgrade pip # Upgrade pip to the latest version
+        pip install -r requirements.txt # Install Python dependencies from requirements.txt
+        az extension add -n ml -y # Install the Azure ML CLI extension
 
     - name: Azure Login
-      uses: azure/login@v1
+      uses: azure/login@v1 # Action to log in to Azure
       with:
-        creds: ${{ secrets.AZURE_CREDENTIALS }}
+        creds: ${{ secrets.AZURE_CREDENTIALS }} # Azure credentials stored as a GitHub secret
 
-    - name: Run AzureML Pipeline Script
+    - name: Run AzureML Pipeline Script # Step to execute your Python script
       env:
+        # Environment variables passed to the Python script
         AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
         AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
         AZUREML_WORKSPACE_NAME: ${{ secrets.AZUREML_WORKSPACE_NAME }}
+        # These dataset variables can be used in your MLOps.py if you want to make them configurable
         DATASET_NAME: "used-cars-data"
         DATASET_VERSION: "22"
       run: |
-        python scripts/MLOps.py
+        python scripts/MLOps.py # Executes the main MLOps Python script
