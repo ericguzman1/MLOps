@@ -1,4 +1,6 @@
 import os
+from datetime import datetime # Import datetime for timestamp
+
 from azure.identity import DefaultAzureCredential
 from azure.ai.ml import MLClient, Input, load_component
 from azure.ai.ml.sweep import Choice
@@ -7,11 +9,26 @@ from azure.ai.ml.entities import Data
 
 # Initialize MLClient
 credential = DefaultAzureCredential()
+
+# --- Explicitly get environment variables and check for existence ---
+subscription_id = os.getenv("AZURE_SUBSCRIPTION_ID")
+resource_group_name = os.getenv("AZURE_RESOURCE_GROUP")
+# Ensure this matches the env var name set in your workflow
+workspace_name = os.getenv("AZUREML_WORKSPACE_NAME")
+
+if not subscription_id:
+    raise ValueError("AZURE_SUBSCRIPTION_ID environment variable is not set.")
+if not resource_group_name:
+    raise ValueError("AZURE_RESOURCE_GROUP environment variable is not set.")
+if not workspace_name:
+    raise ValueError("AZUREML_WORKSPACE_NAME environment variable is not set or is empty. Please check your GitHub secrets and workflow 'env' block.")
+# --- END Checks ---
+
 ml_client = MLClient(
     credential=credential,
-    subscription_id=os.getenv("AZURE_SUBSCRIPTION_ID"),
-    resource_group_name=os.getenv("AZURE_RESOURCE_GROUP"),
-    workspace_name=os.getenv("AZUREML_WORKSPACE_NAME")
+    subscription_id=subscription_id,
+    resource_group_name=resource_group_name,
+    workspace_name=workspace_name
 )
 
 # Define the base directory
@@ -19,6 +36,7 @@ base_dir = os.path.dirname(os.path.abspath(__file__))
 
 step_process = load_component(source=os.path.join(base_dir, "../components/data_prep.yml"))
 train_step = load_component(source=os.path.join(base_dir, "../components/train_step.yml"))
+# Ensure this YAML filename matches exactly what's on disk (e.g., model_register_component.yml)
 model_register_component = load_component(source=os.path.join(base_dir, "../components/model_register.yml"))
 
 # Define pipeline
@@ -55,16 +73,23 @@ def complete_pipeline(input_data_uri, test_train_ratio):
         "pipeline_job_test_data": preprocess_step.outputs.test_data,
         "pipeline_job_best_model": sweep_job.outputs.model_output,
     }
+
+# --- FIX: Generate a dynamic version based on current timestamp ---
+# This ensures a unique version for each run, avoiding the "data version already exists" error.
+current_time_version = datetime.now().strftime("%Y%m%d%H%M%S")
+
 # Create and register the dataset
 data_asset = Data(
     name="used-cars-data",
-    version="24",
+    version=current_time_version, # <--- Use the dynamic version here
     type="uri_file",
     path="data/used_cars.csv"
 )
 ml_client.data.create_or_update(data_asset)
+
 # Get data path from Azure ML dataset
-data_path = ml_client.data.get("used-cars-data", version="24").path
+# Ensure you get the path for the version you just created/updated
+data_path = ml_client.data.get("used-cars-data", version=current_time_version).path # <--- Use the dynamic version here too
 
 # Create pipeline instance
 pipeline_instance = complete_pipeline(
