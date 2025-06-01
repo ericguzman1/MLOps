@@ -6,6 +6,7 @@ from azure.ai.ml import MLClient, Input, load_component
 from azure.ai.ml.sweep import Choice
 from azure.ai.ml.dsl import pipeline
 from azure.ai.ml.entities import Data
+from azure.ai.ml.entities import AmlCompute # Import AmlCompute for creating compute
 
 # Initialize MLClient
 credential = DefaultAzureCredential()
@@ -31,13 +32,44 @@ ml_client = MLClient(
     workspace_name=workspace_name
 )
 
+# --- Ensure compute cluster exists ---
+compute_name = "cpu-cluster"
+try:
+    # Check if the compute target already exists
+    print(f"Checking if compute target '{compute_name}' exists...")
+    ml_client.compute.get(name=compute_name)
+    print(f"Compute target '{compute_name}' already exists.")
+except Exception as e:
+    # If not, create it
+    print(f"Compute target '{compute_name}' not found. Creating a new one...")
+    compute_config = AmlCompute(
+        name=compute_name,
+        type="amlcompute",
+        size="STANDARD_DS3_V2", # You can choose a different VM size
+        min_instances=0,
+        max_instances=1, # Adjust max_instances based on your needs
+        idle_time_before_scale_down=120 # Scale down after 120 seconds of inactivity
+    )
+    # Create the compute cluster, wait for it to be provisioned
+    ml_client.compute.begin_create_or_update(compute_config).wait()
+    print(f"Compute target '{compute_name}' created successfully.")
+# --- END FIX ---
+
+
 # Define the base directory
 base_dir = os.path.dirname(os.path.abspath(__file__))
 
+# --- IMPORTANT: Ensure the 'environment' field in these YAMLs is updated ---
+# For example, in data_prep.yml, change:
+# environment: azureml:AzureML-sklearn-0.24-ubuntu18.04-py37-cpu:1
+# To:
+# environment: azureml:AzureML-sklearn-1.0-ubuntu20.04-py38-cpu:1
+# Apply similar changes to train_step.yml and model_register_component.yml
+# ---
 step_process = load_component(source=os.path.join(base_dir, "../components/data_prep.yml"))
 train_step = load_component(source=os.path.join(base_dir, "../components/train_step.yml"))
 # Ensure this YAML filename matches exactly what's on disk (e.g., model_register_component.yml)
-model_register_component = load_component(source=os.path.join(base_dir, "../components/model_register.yml"))
+model_register_component = load_component(source=os.path.join(base_dir, "../components/model_register_component.yml"))
 
 # Define pipeline
 @pipeline(compute="cpu-cluster", description="Pipeline for data preparation, training, and model registration")
@@ -47,18 +79,21 @@ def complete_pipeline(input_data_uri, test_train_ratio):
         test_train_ratio=test_train_ratio
     )
 
+    # --- FIX: Pass sweep parameters as inputs to the sweep job itself ---
+    # The training_job component should receive its inputs from the sweep's inputs.
+    # Do NOT bind to ${{search_space.criterion}} here.
     training_job = train_step(
         train_data=preprocess_step.outputs.train_data,
         test_data=preprocess_step.outputs.test_data,
-        criterion="${{search_space.criterion}}",
-        max_depth="${{search_space.max_depth}}"
+        # criterion and max_depth will be provided by the sweep's inputs
     )
 
     sweep_job = training_job.sweep(
         sampling_algorithm="random",
         primary_metric="r2_score",
         goal="maximize",
-        search_space={
+        # Define the inputs that will be swept. These will map to the training_job's inputs.
+        inputs={
             "criterion": Choice(["squared_error", "absolute_error"]),
             "max_depth": Choice([3, 5, 10])
         }
@@ -74,7 +109,7 @@ def complete_pipeline(input_data_uri, test_train_ratio):
         "pipeline_job_best_model": sweep_job.outputs.model_output,
     }
 
-# --- FIX: Generate a dynamic version based on current timestamp ---
+# --- Generate a dynamic version based on current timestamp ---
 # This ensures a unique version for each run, avoiding the "data version already exists" error.
 current_time_version = datetime.now().strftime("%Y%m%d%H%M%S")
 
