@@ -4,4 +4,4 @@ azureml-inference-server-http
 azureml-core==1.49.0
 cloudpickle==1.6.0
 azure-ai-ml
-az extension add
+az extension add;
