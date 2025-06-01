@@ -11,7 +11,7 @@ ml_client = MLClient(
     credential=credential,
     subscription_id=os.getenv("AZURE_SUBSCRIPTION_ID"),
     resource_group_name=os.getenv("AZURE_RESOURCE_GROUP"),
-    workspace_name=os.getenv("AZUREML_WORKSPACE_NAME")
+    workspace_name=os.getenv("AZURE_WORKSPACE_NAME")
 )
 
 # Define the base directory
@@ -58,13 +58,13 @@ def complete_pipeline(input_data_uri, test_train_ratio):
 # Create and register the dataset
 data_asset = Data(
     name="used-cars-data",
-    version="22",
+    version="23",
     type="uri_file",
     path="data/used_cars.csv"
 )
 ml_client.data.create_or_update(data_asset)
 # Get data path from Azure ML dataset
-data_path = ml_client.data.get("used-cars-data", version="22").path
+data_path = ml_client.data.get("used-cars-data", version="23").path
 
 # Create pipeline instance
 pipeline_instance = complete_pipeline(
