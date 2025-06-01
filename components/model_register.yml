@@ -7,7 +7,7 @@ inputs:
   model:
     type: uri_folder
 
-code: ./scripts
+code: ../scripts
 command: >-
   python model_register.py 
   --model ${{inputs.model}}
