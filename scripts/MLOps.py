@@ -58,13 +58,13 @@ def complete_pipeline(input_data_uri, test_train_ratio):
 # Create and register the dataset
 data_asset = Data(
     name="used-cars-data",
-    version="23",
+    version="24",
     type="uri_file",
     path="data/used_cars.csv"
 )
 ml_client.data.create_or_update(data_asset)
 # Get data path from Azure ML dataset
-data_path = ml_client.data.get("used-cars-data", version="23").path
+data_path = ml_client.data.get("used-cars-data", version="24").path
 
 # Create pipeline instance
 pipeline_instance = complete_pipeline(
