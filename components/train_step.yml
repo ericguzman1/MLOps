@@ -28,4 +28,4 @@ command: >-
   --max_depth ${{inputs.max_depth}} 
   --model_output ${{outputs.model_output}}
 
-environment: azureml:pima-train-env@latest
+environment: azureml:AzureML-sklearn-1.0-ubuntu20.04-py38-cpu:1 # <--- FIX: Updated environment
