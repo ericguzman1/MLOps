@@ -12,4 +12,4 @@ command: >-
   python model_register.py 
   --model ${{inputs.model}}
 
-environment: azureml:AzureML-sklearn-1.0-ubuntu20.04-py38-cpu@latest
+environment: azureml:AzureML-sklearn-1.0-ubuntu20.04-py38-cpu:1 # <--- FIX: Updated environment
