@@ -11,7 +11,7 @@ ml_client = MLClient(
     credential=credential,
     subscription_id=os.getenv("AZURE_SUBSCRIPTION_ID"),
     resource_group_name=os.getenv("AZURE_RESOURCE_GROUP"),
-    workspace_name=os.getenv("AZURE_WORKSPACE_NAME")
+    workspace_name=os.getenv("AZUREML_WORKSPACE_NAME")
 )
 
 # Define the base directory
