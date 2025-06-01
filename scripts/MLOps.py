@@ -79,21 +79,20 @@ def complete_pipeline(input_data_uri, test_train_ratio):
         test_train_ratio=test_train_ratio
     )
 
-    # --- FIX: Pass sweep parameters as inputs to the sweep job itself ---
-    # The training_job component should receive its inputs from the sweep's inputs.
+    # The training_job component should receive its inputs from the sweep's parameters.
     # Do NOT bind to ${{search_space.criterion}} here.
     training_job = train_step(
         train_data=preprocess_step.outputs.train_data,
         test_data=preprocess_step.outputs.test_data,
-        # criterion and max_depth will be provided by the sweep's inputs
+        # criterion and max_depth will be provided by the sweep's search_space
     )
 
     sweep_job = training_job.sweep(
         sampling_algorithm="random",
         primary_metric="r2_score",
         goal="maximize",
-        # Define the inputs that will be swept. These will map to the training_job's inputs.
-        inputs={
+        # --- FIX: Use 'search_space' instead of 'inputs' here ---
+        search_space={
             "criterion": Choice(["squared_error", "absolute_error"]),
             "max_depth": Choice([3, 5, 10])
         }
