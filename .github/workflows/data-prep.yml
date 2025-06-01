@@ -19,20 +19,23 @@ jobs:
       with:
         python-version: '3.10'
 
-    - name: Install Azure ML CLI v2
+    - name: Install dependencies # Renamed this step for clarity
       run: |
         python -m pip install --upgrade pip
-        pip install azure-ai-ml
+        pip install -r requirements.txt # Assuming azure-ai-ml is in your requirements.txt
 
     - name: Azure Login
       uses: azure/login@v1
       with:
         creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-    - name: Submit Azure ML Job
+    - name: Run AzureML Pipeline Script # Changed step name to reflect action
+      env:
+        AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
+        AZUREML_WORKSPACE_NAME: ${{ secrets.AZUREML_WORKSPACE_NAME }}
+        # Note: DATASET_NAME and DATASET_VERSION are defined within mlops.py already
+        # You can remove them here or use them to override values in the script.
       run: |
-        az extension add -n ml -y
-        az ml job create --file scripts/MLOps.yml \
-          --resource-group "${{ secrets.AZURE_RESOURCE_GROUP }}" \
-          --workspace-name "${{ secrets.AZUREML_WORKSPACE_NAME }}" \
-          --only-show-errors --stream
+        az extension add -n ml -y # It's good to keep this to ensure ml CLI extension is installed
+        python scripts/MLOps.py # This is the correct command to run your pipeline
