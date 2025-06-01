@@ -35,7 +35,7 @@ jobs:
         # Environment variables passed to the Python script
         AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
         AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
-        AZUREML_WORKSPACE_NAME: ${{ secrets.AZUREML_WORKSPACE_NAME }}
+        AZUREML_WORKSPACE_NAME: ${{ secrets.AZURE_WORKSPACE_NAME }}
         # These dataset variables can be used in your MLOps.py if you want to make them configurable
         DATASET_NAME: "used-cars-data"
         DATASET_VERSION: "22"
