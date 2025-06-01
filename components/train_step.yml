@@ -19,7 +19,7 @@ outputs:
   model_output:
     type: mlflow_model
 
-code: ./scripts
+code: ../scripts
 command: >-
   python model_train.py 
   --train_data ${{inputs.train_data}} 
