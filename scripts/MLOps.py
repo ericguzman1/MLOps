@@ -14,8 +14,7 @@ credential = DefaultAzureCredential()
 # --- Explicitly get environment variables and check for existence ---
 subscription_id = os.getenv("AZURE_SUBSCRIPTION_ID")
 resource_group_name = os.getenv("AZURE_RESOURCE_GROUP")
-# Ensure this matches the env var name set in your workflow
-workspace_name = os.getenv("AZUREML_WORKSPACE_NAME")
+workspace_name = os.getenv("AZUREML_WORKSPACE_NAME") # Ensure this matches the env var name set in your workflow
 
 if not subscription_id:
     raise ValueError("AZURE_SUBSCRIPTION_ID environment variable is not set.")
@@ -35,22 +34,19 @@ ml_client = MLClient(
 # --- Ensure compute cluster exists ---
 compute_name = "cpu-cluster"
 try:
-    # Check if the compute target already exists
     print(f"Checking if compute target '{compute_name}' exists...")
     ml_client.compute.get(name=compute_name)
     print(f"Compute target '{compute_name}' already exists.")
 except Exception as e:
-    # If not, create it
     print(f"Compute target '{compute_name}' not found. Creating a new one...")
     compute_config = AmlCompute(
         name=compute_name,
         type="amlcompute",
-        size="STANDARD_DS3_V2", # You can choose a different VM size
+        size="STANDARD_DS3_V2",
         min_instances=0,
-        max_instances=1, # Adjust max_instances based on your needs
-        idle_time_before_scale_down=120 # Scale down after 120 seconds of inactivity
+        max_instances=1,
+        idle_time_before_scale_down=120
     )
-    # Create the compute cluster, wait for it to be provisioned
     ml_client.compute.begin_create_or_update(compute_config).wait()
     print(f"Compute target '{compute_name}' created successfully.")
 # --- END FIX ---
@@ -68,8 +64,7 @@ base_dir = os.path.dirname(os.path.abspath(__file__))
 # ---
 step_process = load_component(source=os.path.join(base_dir, "../components/data_prep.yml"))
 train_step = load_component(source=os.path.join(base_dir, "../components/train_step.yml"))
-# Ensure this YAML filename matches exactly what's on disk (e.g., model_register_component.yml)
-model_register_component = load_component(source=os.path.join(base_dir, "../components/model_register.yml"))
+model_register_component = load_component(source=os.path.join(base_dir, "../components/model_register_component.yml"))
 
 # Define pipeline
 @pipeline(compute="cpu-cluster", description="Pipeline for data preparation, training, and model registration")
@@ -79,8 +74,6 @@ def complete_pipeline(input_data_uri, test_train_ratio):
         test_train_ratio=test_train_ratio
     )
 
-    # The training_job component should receive its inputs from the sweep's parameters.
-    # Do NOT bind to ${{search_space.criterion}} here.
     training_job = train_step(
         train_data=preprocess_step.outputs.train_data,
         test_data=preprocess_step.outputs.test_data,
@@ -91,7 +84,6 @@ def complete_pipeline(input_data_uri, test_train_ratio):
         sampling_algorithm="random",
         primary_metric="r2_score",
         goal="maximize",
-        # --- FIX: Use 'search_space' instead of 'inputs' here ---
         search_space={
             "criterion": Choice(["squared_error", "absolute_error"]),
             "max_depth": Choice([3, 5, 10])
@@ -100,30 +92,30 @@ def complete_pipeline(input_data_uri, test_train_ratio):
 
     sweep_job.set_limits(max_total_trials=20, max_concurrent_trials=10, timeout=7200)
 
-    model_register_step = model_register_component(model=sweep_job.outputs.model_output)
+    # --- FIX: Pass best_child_run_id instead of model output URI ---
+    model_register_step = model_register_component(run_id=sweep_job.outputs.best_child_run_id)
 
     return {
         "pipeline_job_train_data": preprocess_step.outputs.train_data,
         "pipeline_job_test_data": preprocess_step.outputs.test_data,
-        "pipeline_job_best_model": sweep_job.outputs.model_output,
+        "pipeline_job_best_model": sweep_job.outputs.model_output, # Still return the model output URI if needed
+        "pipeline_job_best_run_id": sweep_job.outputs.best_child_run_id, # FIX: Expose best_run_id as pipeline output
     }
 
 # --- Generate a dynamic version based on current timestamp ---
-# This ensures a unique version for each run, avoiding the "data version already exists" error.
 current_time_version = datetime.now().strftime("%Y%m%d%H%M%S")
 
 # Create and register the dataset
 data_asset = Data(
     name="used-cars-data",
-    version=current_time_version, # <--- Use the dynamic version here
+    version=current_time_version,
     type="uri_file",
     path="data/used_cars.csv"
 )
 ml_client.data.create_or_update(data_asset)
 
 # Get data path from Azure ML dataset
-# Ensure you get the path for the version you just created/updated
-data_path = ml_client.data.get("used-cars-data", version=current_time_version).path # <--- Use the dynamic version here too
+data_path = ml_client.data.get("used-cars-data", version=current_time_version).path
 
 # Create pipeline instance
 pipeline_instance = complete_pipeline(
@@ -144,3 +136,4 @@ ml_client.jobs.stream(pipeline_job.name)
 print(f"Train data location: {pipeline_job.outputs['pipeline_job_train_data']}")
 print(f"Test data location: {pipeline_job.outputs['pipeline_job_test_data']}")
 print(f"Best model location: {pipeline_job.outputs['pipeline_job_best_model']}")
+print(f"Best run ID: {pipeline_job.outputs['pipeline_job_best_run_id']}") # FIX: Print best run ID
