@@ -1,4 +1,4 @@
-name: Model Registration on AzureML
+name: Model Registration on AzureML # Updated workflow name
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  azureml_model_registration:
+  azureml_model_registration: # Updated job name
     runs-on: ubuntu-latest
 
     steps:
@@ -19,21 +19,24 @@ jobs:
       with:
         python-version: '3.10'
 
-    - name: Install Azure CLI and AzureML extension
+    - name: Install dependencies and AzureML extension # Clarified step name
       run: |
         python -m pip install --upgrade pip
-        pip install azure-cli azure-ai-ml
-        az extension add -n ml -y
+        # It's highly recommended to put these in a requirements.txt file
+        # and then use 'pip install -r requirements.txt'
+        pip install azure-ai-ml mlflow pandas scikit-learn azureml-core # Assuming these are needed by MLOps.py
+        az extension add -n ml -y # Ensure the Azure ML CLI extension is installed
 
     - name: Azure Login
       uses: azure/login@v1
       with:
         creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-    - name: Submit Azure ML Job
+    - name: Run AzureML Pipeline Script # Changed step name to reflect action
+      env:
+        # Pass environment variables needed by your MLOps.py script
+        AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
+        AZUREML_WORKSPACE_NAME: ${{ secrets.AZUREML_WORKSPACE_NAME }}
       run: |
-        az ml job create --file scripts/model_register_job.yml \
-          --workspace-name "${{ secrets.AZUREML_WORKSPACE_NAME }}" \
-          --resource-group "${{ secrets.AZURE_RESOURCE_GROUP }}" \
-          --subscription "${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
-          --only-show-errors --stream
+        python scripts/MLOps.py # Execute your Python script to submit the pipeline
