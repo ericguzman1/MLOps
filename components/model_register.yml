@@ -1,14 +1,16 @@
+# components/model_register_component.yml
+$schema: https://azuremlschemas.azureedge.net/latest/commandComponent.schema.json
 name: model_register_component
 display_name: Model Registration Step
 version: 1
 type: command
 
 inputs:
-  model:
-    type: uri_folder
-    description: Path to the trained model
+  run_id: # <--- FIX: Changed input name to run_id
+    type: string # <--- FIX: Changed type to string
+    description: MLflow Run ID of the best trained model
 
-outputs: {}
+outputs: {} # No change
 
 environment: azureml:AzureML-sklearn-1.0-ubuntu20.04-py38-cpu:1 # Ensure this is the correct environment
 
@@ -16,4 +18,4 @@ code: ../scripts # Ensure this path is correct relative to the YAML file
 
 command: >
   python model_register.py
-  --model '${{inputs.model}}' # <--- FIX: Added single quotes around ${{inputs.model}}
+  --run_id ${{inputs.run_id}} # <--- FIX: Passed run_id as argument
