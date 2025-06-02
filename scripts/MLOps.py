@@ -14,7 +14,8 @@ credential = DefaultAzureCredential()
 # --- Explicitly get environment variables and check for existence ---
 subscription_id = os.getenv("AZURE_SUBSCRIPTION_ID")
 resource_group_name = os.getenv("AZURE_RESOURCE_GROUP")
-workspace_name = os.getenv("AZUREML_WORKSPACE_NAME") # Ensure this matches the env var name set in your workflow
+# Ensure this matches the env var name set in your workflow
+workspace_name = os.getenv("AZUREML_WORKSPACE_NAME")
 
 if not subscription_id:
     raise ValueError("AZURE_SUBSCRIPTION_ID environment variable is not set.")
@@ -64,7 +65,7 @@ base_dir = os.path.dirname(os.path.abspath(__file__))
 # ---
 step_process = load_component(source=os.path.join(base_dir, "../components/data_prep.yml"))
 train_step = load_component(source=os.path.join(base_dir, "../components/train_step.yml"))
-model_register_component = load_component(source=os.path.join(base_dir, "../components/model_register.yml"))
+model_register_component = load_component(source=os.path.join(base_dir, "../components/model_register_component.yml"))
 
 # Define pipeline
 @pipeline(compute="cpu-cluster", description="Pipeline for data preparation, training, and model registration")
@@ -77,7 +78,6 @@ def complete_pipeline(input_data_uri, test_train_ratio):
     training_job = train_step(
         train_data=preprocess_step.outputs.train_data,
         test_data=preprocess_step.outputs.test_data,
-        # criterion and max_depth will be provided by the sweep's search_space
     )
 
     sweep_job = training_job.sweep(
@@ -92,13 +92,15 @@ def complete_pipeline(input_data_uri, test_train_ratio):
 
     sweep_job.set_limits(max_total_trials=20, max_concurrent_trials=10, timeout=7200)
 
-    # --- FIX: Pass best_child_run_id instead of model output URI ---
-    model_register_step = model_register_component(model=sweep_job.outputs.model_output)
+    # --- FIX: Temporarily disable model_register_step inside the pipeline due to path resolution issue ---
+    # We will register the model in a separate step after the pipeline completes.
+    # model_register_step = model_register_component(model=sweep_job.outputs.model_output)
 
     return {
         "pipeline_job_train_data": preprocess_step.outputs.train_data,
         "pipeline_job_test_data": preprocess_step.outputs.test_data,
-        "pipeline_job_best_model": sweep_job.outputs.model_output, # Still return the model output URI if needed
+        "pipeline_job_best_model": sweep_job.outputs.model_output,
+        "pipeline_job_best_run_id": sweep_job.outputs.best_child_run_id, # EXPOSE best_child_run_id as pipeline output
     }
 
 # --- Generate a dynamic version based on current timestamp ---
@@ -131,8 +133,44 @@ pipeline_job = ml_client.jobs.create_or_update(
 # Stream job logs
 ml_client.jobs.stream(pipeline_job.name)
 
-# Output results
+# --- FIX: After pipeline completes, get the best run ID and register model ---
+# This part executes only after the entire pipeline finishes.
+print(f"Pipeline job '{pipeline_job.name}' completed.")
+best_run_id = pipeline_job.outputs.get("pipeline_job_best_run_id")
+
+if best_run_id:
+    print(f"Best run ID from sweep: {best_run_id}")
+    # Now, use model_register.py (or a similar script) to register the model
+    # from this run ID. This avoids the uri_folder binding issue.
+    # We will call model_register.py as a standalone script here.
+    # This requires model_register.py to be adjusted to take run_id as input.
+
+    print("Attempting to register model using the best run ID.")
+    try:
+        # Re-initialize argparse for model_register.py if it's called as a function
+        # Or, just use mlflow.register_model directly with the best_run_id
+        # Ensure mlflow is configured to use the Azure ML tracking URI
+        mlflow.set_tracking_uri(ml_client.tracking_uri)
+        
+        model_uri = f"runs:/{best_run_id}/artifacts/model" # Assuming model artifact path is 'model'
+        registered_model_name = "trained_decision_tree_model"
+
+        registered_model = mlflow.register_model(
+            model_uri=model_uri,
+            name=registered_model_name,
+            tags={"source_pipeline_run_id": best_run_id, "registered_by_aml_pipeline": True}
+        )
+        print(f"Model registered successfully: Name='{registered_model.name}', Version='{registered_model.version}'")
+    except Exception as e:
+        print(f"Error during post-pipeline model registration: {e}")
+        raise
+else:
+    print("Could not retrieve best run ID from pipeline outputs.")
+# --- END FIX ---
+
+
+# Output results (these will be for the overall pipeline job)
 print(f"Train data location: {pipeline_job.outputs['pipeline_job_train_data']}")
 print(f"Test data location: {pipeline_job.outputs['pipeline_job_test_data']}")
 print(f"Best model location: {pipeline_job.outputs['pipeline_job_best_model']}")
-print(f"Best run ID: {pipeline_job.outputs['pipeline_job_best_run_id']}") # FIX: Print best run ID
+# print(f"Best run ID: {pipeline_job.outputs['pipeline_job_best_run_id']}") # This is already printed above
