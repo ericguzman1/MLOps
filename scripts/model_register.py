@@ -5,39 +5,44 @@ import os
 
 def main():
     parser = argparse.ArgumentParser(description="Model registration script.")
-    parser.add_argument("--run_id", type=str, help="MLflow Run ID of the best trained model.")
+    # FIX: Change argument to accept a model path (uri_folder) instead of run_id
+    parser.add_argument("--model_path", type=str, help="Path to the trained model artifact (URI folder).")
     args = parser.parse_args()
 
-    if not args.run_id:
-        raise ValueError("MLflow Run ID is required for model registration.")
+    if not args.model_path:
+        raise ValueError("Model path is required for model registration.")
 
-    # Construct the MLflow Model URI
-    # 'artifacts/model' is the conventional path where mlflow.sklearn.log_model saves the model
-    model_uri = f"runs:/{args.run_id}/artifacts/model"
-    print(f"Attempting to register model from MLflow URI: {model_uri}")
+    # FIX: Load the model directly from the provided path
+    # The model path is a local directory where the model artifact is mounted by Azure ML
+    print(f"Attempting to load model from local path: {args.model_path}")
+    
+    # Ensure MLflow is configured to use the Azure ML tracking URI
+    # This is often handled automatically in an Azure ML job, but explicit setting can help
+    # mlflow.set_tracking_uri(os.environ.get("MLFLOW_TRACKING_URI")) # This might be needed if not set automatically
 
-    # Initialize MLflow with Azure ML tracking URI (optional, usually handled by environment context in AML)
-    # mlflow.set_tracking_uri(mlflow.get_tracking_uri()) # This line is often not needed if running inside an AML job
+    try:
+        # Load the MLflow model from the local path
+        model = mlflow.sklearn.load_model(args.model_path)
+        print("Model loaded successfully from local path.")
+    except Exception as e:
+        print(f"Error loading model from path {args.model_path}: {e}")
+        raise # Re-raise the exception if model loading fails
 
     # Register the model
-    # The name of the registered model in Azure ML Model Registry
     registered_model_name = "trained_decision_tree_model"
     
-    # Check if the model already exists in the registry to avoid re-registration if desired
-    # For CI/CD, often a new version is created.
     try:
-        # Registering with a new version each time for CI/CD robustness
+        # Registering the model directly from the loaded model object
+        # MLflow will automatically log it to the current run and then register it
         registered_model = mlflow.register_model(
-            model_uri=model_uri,
+            model_uri=f"runs:/{mlflow.active_run().info.run_id}/artifacts/model", # Use current run's artifact URI
             name=registered_model_name,
             # No version specified, MLflow will auto-increment
-            tags={"source_pipeline_run_id": args.run_id, "registered_by_aml_pipeline": True}
+            tags={"registered_by_aml_pipeline": True}
         )
         print(f"Model registered successfully: Name='{registered_model.name}', Version='{registered_model.version}'")
     except Exception as e:
         print(f"Error registering model: {e}")
-        # If you want to force registration, you can potentially try an update here,
-        # but typically for CI/CD, you register new versions.
         raise # Re-raise the exception if registration fails
 
 if __name__ == "__main__":
