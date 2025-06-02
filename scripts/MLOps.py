@@ -93,13 +93,12 @@ def complete_pipeline(input_data_uri, test_train_ratio):
     sweep_job.set_limits(max_total_trials=20, max_concurrent_trials=10, timeout=7200)
 
     # --- FIX: Pass best_child_run_id instead of model output URI ---
-    model_register_step = model_register_component(run_id=sweep_job.outputs.best_child_run_id)
+    model_register_step = model_register_component(model=sweep_job.outputs.model_output)
 
     return {
         "pipeline_job_train_data": preprocess_step.outputs.train_data,
         "pipeline_job_test_data": preprocess_step.outputs.test_data,
         "pipeline_job_best_model": sweep_job.outputs.model_output, # Still return the model output URI if needed
-        "pipeline_job_best_run_id": sweep_job.outputs.best_child_run_id, # FIX: Expose best_run_id as pipeline output
     }
 
 # --- Generate a dynamic version based on current timestamp ---
