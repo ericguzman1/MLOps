@@ -1,14 +1,14 @@
 import os
-from datetime import datetime 
-import mlflow 
-from mlflow.entities import ViewType 
+from datetime import datetime # Import datetime for timestamp
+import mlflow # Import mlflow client
+from mlflow.entities import ViewType # Import ViewType for searching runs
 
 from azure.identity import DefaultAzureCredential
 from azure.ai.ml import MLClient, Input, load_component
 from azure.ai.ml.sweep import Choice
 from azure.ai.ml.dsl import pipeline
 from azure.ai.ml.entities import Data
-from azure.ai.ml.entities import AmlCompute 
+from azure.ai.ml.entities import AmlCompute # Import AmlCompute for creating compute
 
 # Initialize MLClient
 credential = DefaultAzureCredential()
@@ -16,6 +16,7 @@ credential = DefaultAzureCredential()
 # --- Explicitly get environment variables and check for existence ---
 subscription_id = os.getenv("AZURE_SUBSCRIPTION_ID")
 resource_group_name = os.getenv("AZURE_RESOURCE_GROUP")
+# Ensure this matches the env var name set in your workflow
 workspace_name = os.getenv("AZUREML_WORKSPACE_NAME")
 
 if not subscription_id:
@@ -24,7 +25,7 @@ if not resource_group_name:
     raise ValueError("AZURE_RESOURCE_GROUP environment variable is not set.")
 if not workspace_name:
     raise ValueError("AZUREML_WORKSPACE_NAME environment variable is not set or is empty. Please check your GitHub secrets and workflow 'env' block.")
-
+# --- END Checks ---
 
 ml_client = MLClient(
     credential=credential,
@@ -33,6 +34,7 @@ ml_client = MLClient(
     workspace_name=workspace_name
 )
 
+# --- Ensure compute cluster exists ---
 compute_name = "cpu-cluster"
 try:
     print(f"Checking if compute target '{compute_name}' exists...")
@@ -50,13 +52,22 @@ except Exception as e:
     )
     ml_client.compute.begin_create_or_update(compute_config).wait()
     print(f"Compute target '{compute_name}' created successfully.")
+# --- END FIX ---
 
 
 # Define the base directory
 base_dir = os.path.dirname(os.path.abspath(__file__))
 
+# --- IMPORTANT: Ensure the 'environment' field in these YAMLs is updated ---
+# For example, in data_prep.yml, change:
+# environment: azureml:AzureML-sklearn-0.24-ubuntu18.04-py37-cpu:1
+# To:
+# environment: azureml:AzureML-sklearn-1.0-ubuntu20.04-py38-cpu:1
+# Apply similar changes to train_step.yml and model_register_component.yml
+# ---
 step_process = load_component(source=os.path.join(base_dir, "../components/data_prep.yml"))
 train_step = load_component(source=os.path.join(base_dir, "../components/train_step.yml"))
+# model_register_component is no longer used directly in the pipeline, but we keep the load_component for clarity
 model_register_component = load_component(source=os.path.join(base_dir, "../components/model_register.yml"))
 
 
@@ -85,14 +96,18 @@ def complete_pipeline(input_data_uri, test_train_ratio):
 
     sweep_job.set_limits(max_total_trials=20, max_concurrent_trials=10, timeout=7200)
 
+    # --- FIX: Removed model_register_step from pipeline definition ---
+    # It will be handled post-pipeline completion.
     # model_register_step = model_register_component(model=sweep_job.outputs.model_output)
 
     return {
         "pipeline_job_train_data": preprocess_step.outputs.train_data,
         "pipeline_job_test_data": preprocess_step.outputs.test_data,
         "pipeline_job_best_model": sweep_job.outputs.model_output,
+        # --- FIX: Removed 'pipeline_job_best_run_id' as it's not a direct output ---
     }
-    
+
+# --- Generate a dynamic version based on current timestamp ---
 current_time_version = datetime.now().strftime("%Y%m%d%H%M%S")
 
 # Create and register the dataset
@@ -125,14 +140,14 @@ ml_client.jobs.stream(pipeline_job.name)
 # --- FIX: After pipeline completes, query for the best run ID and register model ---
 print(f"Pipeline job '{pipeline_job.name}' completed.")
 
-# Initialize MLflow client with the same tracking URI as MLClient
-mlflow.set_tracking_uri(ml_client.tracking_uri)
+# Initialize MLflow client with the correct tracking URI
+# FIX: Get mlflow_tracking_uri from the workspace object
+mlflow.set_tracking_uri(ml_client.workspaces.get(ml_client.workspace_name).mlflow_tracking_uri)
 mlflow_client = mlflow.tracking.MlflowClient()
 
 best_run_id = None
 try:
     # Get the overall pipeline run (which is a parent run for the sweep)
-    # The pipeline_job.name is the run_id of the parent pipeline run
     parent_run = mlflow_client.get_run(pipeline_job.name)
 
     # Search for child runs of this pipeline run (these include the sweep trials)
@@ -154,12 +169,12 @@ try:
 
 except Exception as e:
     print(f"Error querying MLflow runs to find best child: {e}")
-    raise
+    raise # Re-raise to fail the GitHub Action if we can't find the best run
 
 if best_run_id:
     print("Attempting to register model using the best run ID.")
     try:
-        model_uri = f"runs:/{best_run_id}/artifacts/model" 
+        model_uri = f"runs:/{best_run_id}/artifacts/model" # Assuming model artifact path is 'model'
         registered_model_name = "trained_decision_tree_model"
 
         registered_model = mlflow.register_model(
@@ -173,6 +188,8 @@ if best_run_id:
         raise
 else:
     print("Could not retrieve best run ID from pipeline outputs for model registration.")
+# --- END FIX ---
+
 
 # Output results (these will be for the overall pipeline job)
 print(f"Train data location: {pipeline_job.outputs['pipeline_job_train_data']}")
