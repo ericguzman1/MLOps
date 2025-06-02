@@ -6,9 +6,9 @@ version: 1
 type: command
 
 inputs:
-  run_id: # <--- FIX: Changed input name to run_id
-    type: string # <--- FIX: Changed type to string
-    description: MLflow Run ID of the best trained model
+  model:
+    type: uri_folder
+    description: Path to the trained model
 
 outputs: {} # No change
 
