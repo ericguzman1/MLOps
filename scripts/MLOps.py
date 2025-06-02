@@ -1,5 +1,7 @@
 import os
 from datetime import datetime # Import datetime for timestamp
+import mlflow # Import mlflow client
+from mlflow.entities import ViewType # Import ViewType for searching runs
 
 from azure.identity import DefaultAzureCredential
 from azure.ai.ml import MLClient, Input, load_component
@@ -65,7 +67,9 @@ base_dir = os.path.dirname(os.path.abspath(__file__))
 # ---
 step_process = load_component(source=os.path.join(base_dir, "../components/data_prep.yml"))
 train_step = load_component(source=os.path.join(base_dir, "../components/train_step.yml"))
-model_register_component = load_component(source=os.path.join(base_dir, "../components/model_register.yml"))
+# model_register_component is no longer used directly in the pipeline, but we keep the load_component for clarity
+model_register_component = load_component(source=os.path.join(base_dir, "../components/model_register_component.yml"))
+
 
 # Define pipeline
 @pipeline(compute="cpu-cluster", description="Pipeline for data preparation, training, and model registration")
@@ -92,15 +96,15 @@ def complete_pipeline(input_data_uri, test_train_ratio):
 
     sweep_job.set_limits(max_total_trials=20, max_concurrent_trials=10, timeout=7200)
 
-    # --- FIX: Temporarily disable model_register_step inside the pipeline due to path resolution issue ---
-    # We will register the model in a separate step after the pipeline completes.
+    # --- FIX: Removed model_register_step from pipeline definition ---
+    # It will be handled post-pipeline completion.
     # model_register_step = model_register_component(model=sweep_job.outputs.model_output)
 
     return {
         "pipeline_job_train_data": preprocess_step.outputs.train_data,
         "pipeline_job_test_data": preprocess_step.outputs.test_data,
         "pipeline_job_best_model": sweep_job.outputs.model_output,
-        "pipeline_job_best_run_id": sweep_job.outputs.best_child_run_id, # EXPOSE best_child_run_id as pipeline output
+        # --- FIX: Removed 'pipeline_job_best_run_id' as it's not a direct output ---
     }
 
 # --- Generate a dynamic version based on current timestamp ---
@@ -133,25 +137,44 @@ pipeline_job = ml_client.jobs.create_or_update(
 # Stream job logs
 ml_client.jobs.stream(pipeline_job.name)
 
-# --- FIX: After pipeline completes, get the best run ID and register model ---
-# This part executes only after the entire pipeline finishes.
+# --- FIX: After pipeline completes, query for the best run ID and register model ---
 print(f"Pipeline job '{pipeline_job.name}' completed.")
-best_run_id = pipeline_job.outputs.get("pipeline_job_best_run_id")
+
+# Initialize MLflow client with the same tracking URI as MLClient
+mlflow.set_tracking_uri(ml_client.tracking_uri)
+mlflow_client = mlflow.tracking.MlflowClient()
+
+best_run_id = None
+try:
+    # Get the overall pipeline run (which is a parent run for the sweep)
+    # The pipeline_job.name is the run_id of the parent pipeline run
+    parent_run = mlflow_client.get_run(pipeline_job.name)
+
+    # Search for child runs of this pipeline run (these include the sweep trials)
+    # Filter by experiment ID and parent_run_id
+    child_runs = mlflow_client.search_runs(
+        experiment_ids=[parent_run.info.experiment_id],
+        filter_string=f"tags.mlflow.parentRunId = '{pipeline_job.name}'",
+        order_by=["metrics.r2_score DESC"], # Order by primary metric (maximize)
+        run_view_type=ViewType.ACTIVE_ONLY,
+    )
+
+    if child_runs:
+        # The first run in the ordered list should be the best one
+        best_child_run = child_runs[0]
+        best_run_id = best_child_run.info.run_id
+        print(f"Found best child run ID: {best_run_id} with r2_score: {best_child_run.data.metrics.get('r2_score')}")
+    else:
+        print("No child runs found for the pipeline job.")
+
+except Exception as e:
+    print(f"Error querying MLflow runs to find best child: {e}")
+    # Re-raise to fail the GitHub Action if we can't find the best run
+    raise
 
 if best_run_id:
-    print(f"Best run ID from sweep: {best_run_id}")
-    # Now, use model_register.py (or a similar script) to register the model
-    # from this run ID. This avoids the uri_folder binding issue.
-    # We will call model_register.py as a standalone script here.
-    # This requires model_register.py to be adjusted to take run_id as input.
-
     print("Attempting to register model using the best run ID.")
     try:
-        # Re-initialize argparse for model_register.py if it's called as a function
-        # Or, just use mlflow.register_model directly with the best_run_id
-        # Ensure mlflow is configured to use the Azure ML tracking URI
-        mlflow.set_tracking_uri(ml_client.tracking_uri)
-        
         model_uri = f"runs:/{best_run_id}/artifacts/model" # Assuming model artifact path is 'model'
         registered_model_name = "trained_decision_tree_model"
 
@@ -165,7 +188,7 @@ if best_run_id:
         print(f"Error during post-pipeline model registration: {e}")
         raise
 else:
-    print("Could not retrieve best run ID from pipeline outputs.")
+    print("Could not retrieve best run ID from pipeline outputs for model registration.")
 # --- END FIX ---
 
 
@@ -173,4 +196,3 @@ else:
 print(f"Train data location: {pipeline_job.outputs['pipeline_job_train_data']}")
 print(f"Test data location: {pipeline_job.outputs['pipeline_job_test_data']}")
 print(f"Best model location: {pipeline_job.outputs['pipeline_job_best_model']}")
-# print(f"Best run ID: {pipeline_job.outputs['pipeline_job_best_run_id']}") # This is already printed above
